@@ -1,0 +1,9 @@
+[package]
+name = "ogldrawing"
+version = "0.1.0"
+authors = ["Justas Dabrila <justasdabrila@gmail.com>"]
+
+[dependencies]
+gl = "0.10.0"
+sdl2 = "0.31"
+
