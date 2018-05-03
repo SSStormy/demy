@@ -41,6 +41,85 @@ pub mod gl {
     }
 }
 
+pub enum ShaderType { Vertex, Fragment }
+
+pub struct ShaderHandle { id: GLuint, }
+impl ShaderHandle { fn new(gl_type: GLenum) -> ShaderHandle { unsafe { ShaderHandle { id: glu::CreateShader(gl_type) } } } }
+impl Drop for ShaderHandle { fn drop(&mut self) { unsafe { glu::DeleteShader(self.id); } } }
+
+pub struct Shader {
+    ttype: ShaderType,
+    handle: ShaderHandle,
+    log: Option<String>
+}
+
+impl Shader {
+    pub fn get_type(&self) -> &ShaderType { &self.ttype }
+
+    pub fn new(ttype: ShaderType, filepath: &str) -> Result<Shader, String> {
+        let gl_type = match ttype {
+            ShaderType::Vertex => glu::VERTEX_SHADER,
+            ShaderType::Fragment => glu::FRAGMENT_SHADER
+        };
+
+        let mut fd = match std::fs::File::open(filepath) {
+            Ok(fd) => fd,
+            Err(err) => return Err(format!("IO open error: {:?}", err.kind()))
+        };
+
+        use std::io::Read;
+        let mut buffer = Vec::new();
+        match fd.read_to_end(&mut buffer) {
+            Ok(_) => (),
+            Err(err) => return Err(format!("IO read error: {:?}", err.kind()))
+        }
+
+        let handle = ShaderHandle::new(gl_type);
+        let mut log = None;
+
+        unsafe {
+            glu::ShaderSource(handle.id, 1, 
+                              std::mem::transmute::<_, *const *const GLchar>(buffer.as_ptr()),
+                              std::mem::transmute::<_, *const GLint>(0 as usize));
+
+            glu::CompileShader(handle.id);
+
+            let mut log_length = 0;
+            glu::GetShaderiv(handle.id, glu::INFO_LOG_LENGTH, &mut log_length);
+
+            if log_length > 0 {
+                let mut str_log = String::with_capacity(log_length as usize);
+                glu::GetShaderInfoLog(handle.id, log_length, &mut log_length, str_log.as_mut_vec().as_mut_ptr() as *mut i8);
+                log = Some(str_log);
+            }
+
+            let mut did_compile = 0;
+            glu::GetShaderiv(handle.id, glu::COMPILE_STATUS, &mut did_compile);
+            if did_compile == 0 {
+                return Err(log.unwrap());
+            }
+        }
+
+        Ok(Shader { ttype, handle, log})
+    }
+}
+
+pub struct GLSLProgram {
+    id: GLuint,
+}
+
+impl GLSLProgram {
+    fn new(vert_shader: &Shader, frag_shader: &Shader) -> Result<GLSLProgram> {
+        if let frag_shader.get_type() = vert_shader.get_type() { return Err("vert_shader type == frag_shader type") }
+
+        
+    }
+}
+
+impl Drop for GLSLProgram { fn drop(&mut self) { unsafe { glu::DeleteProgram(self.id) } } }
+
+impl GLSLProgram {
+}
 
 pub struct DataBuffer {
     id: GLuint,
@@ -171,7 +250,6 @@ fn main() {
     vao.enable_attrib(0);
     vao.setup_attrib(0, 2, glu::FLOAT, false, 0, 0);
 
-    VertexArray::unbind();
     DataBuffer::unbind(glu::ARRAY_BUFFER);
 
     let mut event_pump = sdl.event_pump().unwrap();
