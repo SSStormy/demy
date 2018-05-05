@@ -1,0 +1,46 @@
+let track = get_track("camera.x");
+// Every track gets implicit node at timeMs=0 where value=0
+
+OK
+let result = track.add_node()
+    .at_time(timeMs).
+    .with_value(value).
+    .set_curve_exp(0.45_f32) // (0-1), InterpolationBuilder trait
+    .done();
+
+// result: Option<Node>
+
+OK
+let x = track.get_value(timeMs/2);
+// x = lerp((time - last_node_end_time) / (node_end_time - last_node_end_time).powf(exponential), last_node_end_value, node_end_value);
+
+// Guarantee that last_node will exist at any point in time.
+
+// Node is not gurantee to exist at any point in time. If we are trying to get_value at a t where we do not have a node,
+// we should return last_node_end_value
+
+OK
+let nodes = track.get_nodes();
+
+OK
+let mut (left, right) = track.get_mut_nodes_between(timeMs) // non-mut counterpart
+// left: NodeType right: Option<NodeType>
+
+OK
+track.destroy(left); // consumes the node
+// cannot acces node/left beyond this point
+
+OK
+let right = right.unwrap()
+let mut next_to_right = right.get_mut_next_node(); // mut counterpart, returns ref
+
+next_to_right.get_time();
+next_to_right.set_time(timeMs); // does magic
+
+next_to_right.get_value();
+next_to_right.set_value(value);
+
+// InterpolationBuilder trait
+next_to_right.set_curve_linear(5)
+next_to_right.set_curve_none()
+    

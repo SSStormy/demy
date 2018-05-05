@@ -3,6 +3,8 @@ extern crate gl as glu; // gl-unsafe
 
 use glu::types::*;
 
+mod timeline;
+
 #[allow(non_snake_case)]
 pub mod gl {
     use super::glu;
@@ -16,6 +18,10 @@ pub mod gl {
     }
     pub fn Clear(what: GLenum) {
         unsafe { glu::Clear(what); }
+    }
+
+    pub fn DrawArrays(mode: GLenum, first: GLint, count: GLsizei) {
+        unsafe { glu::DrawArrays(mode, first, count) }
     }
 
     pub type DebugCallback = fn(GLenum, GLenum, GLuint, GLenum, GLsizei, &ffi::CStr);
@@ -39,8 +45,39 @@ pub mod gl {
             (cb)(source, ttype, id, severity, length, s);
         }
     }
+
+    pub fn get_generic_status(id: GLuint, 
+                                             status_enum: GLenum,
+                                             getter: unsafe fn(GLuint, GLenum, *mut GLint),
+                                             log_getter: unsafe fn(GLuint, GLsizei, *mut GLsizei, *mut GLchar))
+        -> Result<Option<String>, String> {
+        unsafe {
+            let mut log_length = 0;
+            let mut log: Option<String> = None;
+            
+            (getter)(id, glu::INFO_LOG_LENGTH, &mut log_length);
+
+            if log_length > 0 {
+                let mut log_vec = Vec::<u8>::with_capacity(log_length as usize);
+                let mut log_buffer = log_vec.as_mut_ptr();
+
+                (log_getter)(id, log_length, &mut log_length, log_buffer as *mut i8);
+
+                let log_length = log_length as usize;
+                log = Some(String::from_raw_parts(log_buffer, log_length, log_length));
+                // log_vec, log_buffer are now owned by log
+            }
+
+            let mut did_compile = 0;
+            (getter)(id, status_enum, &mut did_compile);
+
+            if did_compile == 0 { Err(log.unwrap()) }
+            else { Ok(log) }
+        }
+    }
 }
 
+#[derive(PartialEq)]
 pub enum ShaderType { Vertex, Fragment }
 
 pub struct ShaderHandle { id: GLuint, }
@@ -55,8 +92,12 @@ pub struct Shader {
 
 impl Shader {
     pub fn get_type(&self) -> &ShaderType { &self.ttype }
+    pub fn get_id(&self) -> GLuint { self.handle.id }
 
-    pub fn new(ttype: ShaderType, filepath: &str) -> Result<Shader, String> {
+    pub fn new_fragment(filepath: &str) -> Result<Self, String> { Shader::new(ShaderType::Fragment, filepath) }
+    pub fn new_vertex(filepath: &str) -> Result<Self, String> { Shader::new(ShaderType::Vertex, filepath) }
+
+    fn new(ttype: ShaderType, filepath: &str) -> Result<Self, String> {
         let gl_type = match ttype {
             ShaderType::Vertex => glu::VERTEX_SHADER,
             ShaderType::Fragment => glu::FRAGMENT_SHADER
@@ -75,55 +116,60 @@ impl Shader {
         }
 
         let handle = ShaderHandle::new(gl_type);
-        let mut log = None;
+        let buf_len = buffer.len() as i32;
 
         unsafe {
             glu::ShaderSource(handle.id, 1, 
-                              std::mem::transmute::<_, *const *const GLchar>(buffer.as_ptr()),
-                              std::mem::transmute::<_, *const GLint>(0 as usize));
+                              &(buffer.as_ptr() as *const i8) as *const *const i8,
+                              &buf_len);
 
             glu::CompileShader(handle.id);
 
-            let mut log_length = 0;
-            glu::GetShaderiv(handle.id, glu::INFO_LOG_LENGTH, &mut log_length);
-
-            if log_length > 0 {
-                let mut str_log = String::with_capacity(log_length as usize);
-                glu::GetShaderInfoLog(handle.id, log_length, &mut log_length, str_log.as_mut_vec().as_mut_ptr() as *mut i8);
-                log = Some(str_log);
-            }
-
-            let mut did_compile = 0;
-            glu::GetShaderiv(handle.id, glu::COMPILE_STATUS, &mut did_compile);
-            if did_compile == 0 {
-                return Err(log.unwrap());
+            let log = gl::get_generic_status(handle.id, glu::COMPILE_STATUS, glu::GetShaderiv, glu::GetShaderInfoLog);
+            match log {
+                Ok(log) => Ok(Shader { ttype, handle, log }),
+                Err(s) => { println!("{}", s); Err(s) }
             }
         }
-
-        Ok(Shader { ttype, handle, log})
     }
 }
+
+
+pub struct GLSLProgramHandle { id: GLuint, }
+impl Drop for GLSLProgramHandle { fn drop(&mut self) { unsafe { glu::DeleteProgram(self.id) } } }
+impl GLSLProgramHandle { pub fn new() -> GLSLProgramHandle { unsafe { GLSLProgramHandle { id: glu::CreateProgram() } } } }
 
 pub struct GLSLProgram {
-    id: GLuint,
+    handle: GLSLProgramHandle,
+    log: Option<String>
 }
 
 impl GLSLProgram {
-    fn new(vert_shader: &Shader, frag_shader: &Shader) -> Result<GLSLProgram> {
-        if let frag_shader.get_type() = vert_shader.get_type() { return Err("vert_shader type == frag_shader type") }
+    pub fn bind(&self) {
+        unsafe { glu::UseProgram(self.handle.id) }
+    }
+    pub fn new(vert_shader: &Shader, frag_shader: &Shader) -> Result<GLSLProgram, String> {
+        if frag_shader.get_type() == vert_shader.get_type() { return Err("vert_shader type == frag_shader type".to_string()) }
 
-        
+        let handle = GLSLProgramHandle::new();
+
+        unsafe {
+            glu::AttachShader(handle.id, vert_shader.get_id());
+            glu::AttachShader(handle.id, frag_shader.get_id());
+
+            glu::LinkProgram(handle.id);
+
+            let status = gl::get_generic_status(handle.id, glu::LINK_STATUS, glu::GetProgramiv, glu::GetProgramInfoLog);
+
+            match status {
+                Ok(log) => Ok(GLSLProgram { handle, log }),
+                Err(log) => Err(log)
+            }
+        }
     }
 }
 
-impl Drop for GLSLProgram { fn drop(&mut self) { unsafe { glu::DeleteProgram(self.id) } } }
-
-impl GLSLProgram {
-}
-
-pub struct DataBuffer {
-    id: GLuint,
-}
+pub struct DataBuffer { id: GLuint, }
 
 impl DataBuffer {
     pub fn new() -> DataBuffer {
@@ -162,9 +208,7 @@ impl Drop for DataBuffer {
     }
 }
 
-pub struct VertexArray {
-    id: GLuint,
-}
+pub struct VertexArray { id: GLuint, }
 
 impl VertexArray {
     pub fn new() -> VertexArray {
@@ -243,12 +287,34 @@ fn main() {
         1_f32, -1_f32,
         1_f32, 1_f32,
     ];
+
+    {
+        let mut cwd = std::path::PathBuf::new();
+        cwd.push(std::env::current_dir().unwrap());
+        cwd.push("run_tree/");
+        std::env::set_current_dir(&cwd).unwrap();
+
+        println!("Work dir: {}", cwd.to_str().unwrap());
+    }
     
     vao.bind();
     vbo.bind(glu::ARRAY_BUFFER);
     vbo.set_data(glu::ARRAY_BUFFER, std::mem::size_of::<f32>() * 8, &quad, glu::STATIC_DRAW);
     vao.enable_attrib(0);
     vao.setup_attrib(0, 2, glu::FLOAT, false, 0, 0);
+
+    let vert = match Shader::new_vertex("quad.vertex") {
+        Ok(vert) => vert,
+        Err(log) => panic!("Vertex shader: {}", log)
+    };
+
+    let frag = match Shader::new_fragment("scene.fragment") {
+        Ok(frag) => frag,
+        Err(log) => panic!("Fragshader: {}", log)
+    };
+
+    let program = GLSLProgram::new(&vert, &frag).unwrap();
+    program.bind();
 
     DataBuffer::unbind(glu::ARRAY_BUFFER);
 
@@ -266,9 +332,12 @@ fn main() {
         }
 
         gl::Clear(glu::COLOR_BUFFER_BIT);
+        gl::DrawArrays(glu::TRIANGLE_STRIP, 0, 4);
 
         window.gl_swap_window();
 
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+
+
 }
