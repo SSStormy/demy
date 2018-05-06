@@ -44,3 +44,17 @@ next_to_right.set_value(value);
 next_to_right.set_curve_linear(5)
 next_to_right.set_curve_none()
     
+
+
+--------------------------\
+
+
+demy_timeline* tl = demy_tl_new();
+
+demy_track_handle* track = demy_tl_track_new(tl, "camera");
+demy_track_handle* track = demy_tl_track_get(tl, "camera");
+
+demy_tr_add_node(track, 10, 1, DEMY_INTERP_LINEAR);
+demy_tr_del_node(track, 10);
+
+demy_node_iter* = demy_tr_next(track);

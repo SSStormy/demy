@@ -1,9 +1,11 @@
 [package]
-name = "ogldrawing"
+name = "demy"
 version = "0.1.0"
 authors = ["Justas Dabrila <justasdabrila@gmail.com>"]
 
+[lib]
+name = "demy"
+crate-type = ["dylib"]
+
 [dependencies]
-gl = "0.10.0"
-sdl2 = "0.31"
 
