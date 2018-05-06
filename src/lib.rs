@@ -325,6 +325,12 @@ pub mod ffi {
     }
 
     #[no_mangle]
+    pub unsafe extern "C" fn demy_tr_iter_end(iter: *mut CAPINodeIterator) {
+        if iter.is_null() { return }
+        Box::from_raw(iter);
+    }
+
+    #[no_mangle]
     pub unsafe extern "C" fn demy_tr_iter_get(iter: *mut CAPINodeIterator) -> *const Node {
         &(*(*iter).track).nodes[(*iter).index]
     }
@@ -338,15 +344,15 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_node_clone(node: *const Node) -> *const Node {
+    pub unsafe extern "C" fn demy_node_clone(node: *const Node) -> *mut Node {
         let new_node = Box::new((*node).clone());
         Box::into_raw(new_node)
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_node_new(time: c_uint, value: c_double, interp: CAPIInterpType) {
+    pub unsafe extern "C" fn demy_node_new(time: c_uint, value: c_double, interp: CAPIInterpType) -> *mut Node{
         let new_node = Box::new(Node::new(time, value, interp.into_func()));
-        Box::into_raw(new_node);
+        Box::into_raw(new_node)
     }
 
     #[no_mangle]
