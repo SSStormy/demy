@@ -397,6 +397,42 @@ pub mod ffi {
         // TODO
         false
     }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_node_set_interp(node: *mut Node, interp: InterpType) {
+        if node.is_null() { return }
+        (*node).interp = interp;
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_node_get_interp(node: *mut Node) -> InterpType {
+        if node.is_null() { return InterpType::None }
+        (*node).interp
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_node_set_value(node: *mut Node, value: c_double) {
+        if node.is_null() { return }
+        (*node).value = value;
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_node_get_value(node: *mut Node) -> c_double {
+        if node.is_null() { return 0_f64 }
+        (*node).value
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_node_set_time(node: *mut Node, time: c_uint) {
+        if node.is_null() { return }
+        (*node).time = time;
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_node_get_time(node: *mut Node) -> c_uint {
+        if node.is_null() { return 0 }
+        (*node).time
+    }
 }
 
 
