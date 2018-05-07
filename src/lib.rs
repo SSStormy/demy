@@ -192,6 +192,20 @@ impl Timeline {
         }
     }
 
+    pub fn save(&self) -> Result<String, &'static str> {
+        match serde_json::to_string(self) {
+            Ok(result) => Ok(result),
+            Err(_err) => Err("Failed to save timeline.")
+        }
+    }
+
+    pub fn load(buffer: &str) -> Result<Timeline, &'static str> {
+        match serde_json::from_str(&buffer) {
+            Ok(val) => Ok(val),
+            Err(_err) => Err("Failed to load timeline.")
+        }
+    }
+
     pub fn get_track(&mut self, name: &str) -> &Track { 
         self.try_add_track(name);
         self.tracks.get(name).unwrap()
@@ -370,6 +384,19 @@ pub mod ffi {
         if node.is_null() { return }
         Box::from_raw(node);
     }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_tl_save(tl: *const Timeline, _path: *const c_char) {
+        if tl.is_null() { return }
+        // TODO
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_tl_load(tl: *const Timeline, _path: *const c_char) -> bool {
+        if tl.is_null() { return false; }
+        // TODO
+        false
+    }
 }
 
 
@@ -431,7 +458,7 @@ mod tests {
     fn interpolation() {
         let mut tl = Timeline::new();
         {
-            let mut track = tl.get_track_mut("camera");
+            let track = tl.get_track_mut("camera");
             assert!(track.add_node(&Node::new(10, 1_f64, InterpType::Linear)).is_none());
             assert!(track.add_node(&Node::new(20, 2_f64, InterpType::Linear)).is_none());
 
@@ -461,7 +488,7 @@ mod tests {
     #[test]
     fn default_zero_node() {
         let mut tl = Timeline::new();
-        let mut track = tl.get_track_mut("camera");
+        let track = tl.get_track_mut("camera");
 
         assert_eq!(track.nodes().next().unwrap().get_time(), 0);
     }
@@ -469,8 +496,7 @@ mod tests {
     #[test]
     fn no_duplicate_nodes() {
         let mut tl = Timeline::new();
-        let mut track = tl.get_track_mut("camera");
-        let time = 1;
+        let track = tl.get_track_mut("camera");
 
         assert!(track.add_node(&Node::new(1, 0_f64, InterpType::None)).is_none());
         assert!(track.add_node(&Node::new(1, 0_f64, InterpType::None)).is_some());
@@ -483,7 +509,7 @@ mod tests {
         let mut tl = Timeline::new();
 
         {
-            let mut track = tl.get_track_mut("camera.x");
+            let track = tl.get_track_mut("camera.x");
             track.add_node(&Node::new(10, 1_f64, InterpType::Linear));
         }
 
@@ -504,25 +530,24 @@ mod tests {
         let t1_node1 = Node::new(10, 1_f64, InterpType::Linear);
         let t1_node2 = Node::new(20, 2_f64, InterpType::Linear);
 
-        let track2 = "camera.x";
+        let track2 = "camera.y";
         let t2_node1 = Node::new(10, 4_f64, InterpType::Linear);
         let t2_node2 = Node::new(20, 8_f64, InterpType::Linear);
 
         {
-            let mut track = tl.get_track_mut(track1);
+            let track = tl.get_track_mut(track1);
             track.add_node(&t1_node1);
             track.add_node(&t1_node2);
         }
+
         {
-            let mut track = tl.get_track_mut(track2);
+            let track = tl.get_track_mut(track2);
             track.add_node(&t2_node1);
             track.add_node(&t2_node2);
         }
 
-        let serialized = serde_json::to_string(&tl).unwrap();
-        println!("{}", serialized);
-
-        let mut tl: Timeline = serde_json::from_str(&serialized).unwrap();
+        let serialized = tl.save().unwrap();
+        let mut tl = Timeline::load(&serialized).unwrap();
 
         assert_eq!(tl.tracks().count(), 2);
 
