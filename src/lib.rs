@@ -326,6 +326,7 @@ pub mod ffi {
         }
     }
 
+    // FAT TODO : rethink iterators
     #[no_mangle]
     pub unsafe extern "C" fn demy_tr_iter_start(tr: *mut Track) -> *mut CAPINodeIterator {
         let data = Box::new(CAPINodeIterator { 
