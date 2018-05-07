@@ -2,13 +2,21 @@ use std::collections::HashMap;
 use std::collections::hash_map;
 use std::slice;
 
+#[macro_use]
+extern crate serde_derive;
+
+extern crate serde;
+extern crate serde_json;
+
+#[derive(Serialize, Deserialize)]
 pub struct Track {
     nodes: Vec<Node>,
     name: String,
 }
 
 #[repr(C)]
-pub enum CAPIInterpType {
+#[derive(Copy, Clone, Serialize, Deserialize)]
+pub enum InterpType {
     None = 0,
     Linear = 1
 }
@@ -19,11 +27,11 @@ pub struct CAPINodeIterator {
     index: usize,
 }
 
-impl CAPIInterpType {
-    pub fn into_func(self) -> Interpolator {
+impl InterpType {
+    pub fn to_func(&self) -> Interpolator {
         match self {
-            CAPIInterpType::None => interp_none,
-            CAPIInterpType::Linear => interp_linear
+            &InterpType::None => interp_none,
+            &InterpType::Linear => interp_linear
         }
     }
 }
@@ -35,7 +43,7 @@ impl Track {
             name: String::from(name),
         };
 
-        track.internal_add_node(0, &Node::new(0,0_f64, interp_none));
+        track.internal_add_node(0, &Node::new(0,0_f64, InterpType::None));
         track
     }
 
@@ -95,10 +103,10 @@ impl Track {
 
         let t = (time as f64 - left.get_time() as f64) / (right.get_time() as f64 - left.get_time() as f64);
 
-        (right.interp)(left, right, t)
+        (right.interp.to_func())(left, right, t)
     }
 
-    pub fn nodes(&mut self) -> slice::Iter<Node> { self.nodes.iter() }
+    pub fn nodes(&self) -> slice::Iter<Node> { self.nodes.iter() }
     
     pub fn del_node_at(&mut self, time: u32) -> Option<&'static str> {
         match self.internal_get_node_index_at(time) {
@@ -157,6 +165,7 @@ impl Track {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Timeline {
     tracks: HashMap<String, Track>, 
 }
@@ -164,6 +173,7 @@ pub struct Timeline {
 pub struct TimelineTrackIter<'timeline> {
     iter: hash_map::Iter<'timeline, String, Track>,
 }
+
 impl<'timeline >Iterator for TimelineTrackIter<'timeline> {
     type Item = &'timeline Track;
 
@@ -222,15 +232,15 @@ pub fn interp_linear(from: &Node, to: &Node, t: f64) -> f64 {
     from.get_value() * (1_f64 - t) + (t * to.get_value())
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Node {
     time: u32,
     value: f64,
-    interp: Interpolator,
+    interp: InterpType,
 }
 
 impl Node {
-    pub fn new(time: u32, value: f64, interp: Interpolator) -> Self {
+    pub fn new(time: u32, value: f64, interp: InterpType) -> Self {
         Node { time, value, interp }
     }
 
@@ -240,8 +250,8 @@ impl Node {
     pub fn get_value(&self) -> f64 { self.value }
     pub fn set_value(&mut self, value: f64) { self.value = value }
 
-    pub fn get_interpolator(&self) -> Interpolator { self.interp }
-    pub fn set_interpolator(&mut self, interp: Interpolator) { self.interp = interp }
+    pub fn get_interpolator(&self) -> InterpType{ self.interp }
+    pub fn set_interpolator(&mut self, interp: InterpType) { self.interp = interp }
 }
 
 pub mod ffi {
@@ -278,8 +288,8 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_add_node(tr: *mut Track, time: c_uint, value: c_double, interp: CAPIInterpType) -> bool {
-        let node = Node::new(time, value, interp.into_func());
+    pub unsafe extern "C" fn demy_tr_add_node(tr: *mut Track, time: c_uint, value: c_double, interp: InterpType) -> bool {
+        let node = Node::new(time, value, interp);
         match (*tr).add_node(&node) {
             Some(_err) => false, // TODO : expose error string to C
             None => true
@@ -350,8 +360,8 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_node_new(time: c_uint, value: c_double, interp: CAPIInterpType) -> *mut Node{
-        let new_node = Box::new(Node::new(time, value, interp.into_func()));
+    pub unsafe extern "C" fn demy_node_new(time: c_uint, value: c_double, interp: InterpType) -> *mut Node{
+        let new_node = Box::new(Node::new(time, value, interp));
         Box::into_raw(new_node)
     }
 
@@ -372,9 +382,9 @@ mod tests {
         let mut tl = Timeline::new();
         let track = tl.get_track_mut("camera");
 
-        track.add_node(&Node::new(10, 1_f64, interp_none));
+        track.add_node(&Node::new(10, 1_f64, InterpType::None));
 
-        track.update_node_at(10, &Node::new(20, 2_f64, interp_none));
+        track.update_node_at(10, &Node::new(20, 2_f64, InterpType::None));
         assert!(track.nodes().count() == 2);
 
         assert!(track.get_node_at(20).unwrap().get_time() == 20);
@@ -382,7 +392,7 @@ mod tests {
 
         assert!(track.get_node_at(10).is_none());
 
-        track.add_node(&Node::new(10, 1_f64, interp_none));
+        track.add_node(&Node::new(10, 1_f64, InterpType::None));
         assert!(track.nodes().count() == 3);
 
         assert!(track.get_node_at(20).unwrap().get_time() == 20);
@@ -391,7 +401,7 @@ mod tests {
         assert!(track.get_node_at(10).unwrap().get_time() == 10);
         assert!(track.get_node_at(10).unwrap().get_value() == 1_f64);
 
-        track.update_node_at(10, &Node::new(30, 3_f64, interp_none));
+        track.update_node_at(10, &Node::new(30, 3_f64, InterpType::None));
 
         assert!(track.get_node_at(10).is_none());
 
@@ -422,8 +432,8 @@ mod tests {
         let mut tl = Timeline::new();
         {
             let mut track = tl.get_track_mut("camera");
-            assert!(track.add_node(&Node::new(10, 1_f64, interp_linear)).is_none());
-            assert!(track.add_node(&Node::new(20, 2_f64, interp_linear)).is_none());
+            assert!(track.add_node(&Node::new(10, 1_f64, InterpType::Linear)).is_none());
+            assert!(track.add_node(&Node::new(20, 2_f64, InterpType::Linear)).is_none());
 
             assert!(track.nodes().len() == 3);
         }
@@ -462,8 +472,8 @@ mod tests {
         let mut track = tl.get_track_mut("camera");
         let time = 1;
 
-        assert!(track.add_node(&Node::new(1, 0_f64, interp_none)).is_none());
-        assert!(track.add_node(&Node::new(1, 0_f64, interp_none)).is_some());
+        assert!(track.add_node(&Node::new(1, 0_f64, InterpType::None)).is_none());
+        assert!(track.add_node(&Node::new(1, 0_f64, InterpType::None)).is_some());
 
         assert_eq!(track.nodes().count(), 2); // implcit 0
     }
@@ -474,7 +484,7 @@ mod tests {
 
         {
             let mut track = tl.get_track_mut("camera.x");
-            track.add_node(&Node::new(10, 1_f64, interp_linear));
+            track.add_node(&Node::new(10, 1_f64, InterpType::Linear));
         }
 
         for i in 0..50 {
@@ -485,5 +495,53 @@ mod tests {
         let node = track.get_node_at(10).unwrap();
         assert_eq!(node.get_time(), 10);
         assert_eq!(node.get_value(), 1_f64);
+    }
+
+    #[test]
+    fn serialize_deserialize() {
+        let mut tl = Timeline::new();
+        let track1 = "camera.x";
+        let t1_node1 = Node::new(10, 1_f64, InterpType::Linear);
+        let t1_node2 = Node::new(20, 2_f64, InterpType::Linear);
+
+        let track2 = "camera.x";
+        let t2_node1 = Node::new(10, 4_f64, InterpType::Linear);
+        let t2_node2 = Node::new(20, 8_f64, InterpType::Linear);
+
+        {
+            let mut track = tl.get_track_mut(track1);
+            track.add_node(&t1_node1);
+            track.add_node(&t1_node2);
+        }
+        {
+            let mut track = tl.get_track_mut(track2);
+            track.add_node(&t2_node1);
+            track.add_node(&t2_node2);
+        }
+
+        let serialized = serde_json::to_string(&tl).unwrap();
+        println!("{}", serialized);
+
+        let mut tl: Timeline = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(tl.tracks().count(), 2);
+
+        {
+            let track = tl.get_track(track1);
+            assert_eq!(track.nodes().count(), 3);
+            let val = track.get_value_at(5);
+            assert!(0.001 > (0.5_f64 - val).abs(), "val: {}", val);
+            let val = track.get_value_at(15);
+            assert!(0.001 > (1.5_f64 - val).abs(), "val: {}", val);
+        }
+
+        {
+            let track = tl.get_track(track2);
+            assert_eq!(track.nodes().count(), 3);
+            let val = track.get_value_at(5);
+            assert!(0.001 > (2_f64 - val).abs(), "val: {}", val);
+            let val = track.get_value_at(15);
+            assert!(0.001 > (6_f64 - val).abs(), "val: {}", val);
+        }
     }
 }
