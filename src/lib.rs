@@ -319,16 +319,15 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_get_node(tr: *mut Track, time: c_uint) -> *const Node {
+    pub unsafe extern "C" fn demy_tr_get_node(tr: *const Track, time: c_uint) -> *const Node {
         match (*tr).get_node_at(time) {
             Some(node) => node,
             None => ptr::null()
         }
     }
 
-    // FAT TODO : rethink iterators
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_iter_begin(tr: *mut Track) -> *mut CAPINodeIterator {
+    pub unsafe extern "C" fn demy_tr_iter_begin(tr: *const Track) -> *mut CAPINodeIterator {
         let data = Box::new(CAPINodeIterator { 
             track: tr as *const Track, 
             index: 0,
@@ -338,7 +337,7 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_iter_end(tr: *mut Track) -> *mut CAPINodeIterator {
+    pub unsafe extern "C" fn demy_tr_iter_end(tr: *const Track) -> *mut CAPINodeIterator {
         let data = Box::new(CAPINodeIterator { 
             track: tr as *const Track, 
             index: (*tr).nodes.len(),
@@ -366,13 +365,13 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_iter_are_eq(a: *mut CAPINodeIterator, b: *mut CAPINodeIterator) -> bool {
+    pub unsafe extern "C" fn demy_tr_iter_are_eq(a: *const CAPINodeIterator, b: *const CAPINodeIterator) -> bool {
         if a.is_null() || b.is_null() { return false; }
         return (*a).index == (*b).index;
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_iter_get(iter: *mut CAPINodeIterator) -> *const Node {
+    pub unsafe extern "C" fn demy_tr_iter_get(iter: *const CAPINodeIterator) -> *const Node {
         &(*(*iter).track).nodes[(*iter).index]
     }
 
@@ -402,17 +401,59 @@ pub mod ffi {
         Box::from_raw(node);
     }
 
+    use std::fs;
+    use std::io::Read;
+    use std::io::Write;
+
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tl_save(tl: *const Timeline, _path: *const c_char) {
-        if tl.is_null() { return }
-        // TODO
+    pub unsafe extern "C" fn demy_tl_save(tl: *const Timeline, path: *const c_char) -> bool {
+        if tl.is_null() { return false; }
+
+        let path = match CStr::from_ptr(path).to_str() {
+            Ok(path) => path,
+            Err(_e) => return false,
+        };
+
+        let mut fd = match fs::File::open(path) {
+            Ok(fd) => fd,
+            Err(_e) => return false,
+        };
+
+        let data = match (*tl).save() {
+            Ok(data) => data,
+            Err(_err) => return false,
+        };
+
+        match fd.write_all(&data.into_bytes()) {
+            Ok(_result) => true,
+            Err(_err) => false,
+        }
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tl_load(tl: *const Timeline, _path: *const c_char) -> bool {
-        if tl.is_null() { return false; }
-        // TODO
-        false
+    pub unsafe extern "C" fn demy_tl_load(path: *const c_char) -> *mut Timeline {
+        if path.is_null() { return ptr::null_mut(); }
+
+        let path = match CStr::from_ptr(path).to_str() {
+            Ok(path) => path,
+            Err(_e) => return ptr::null_mut()
+        };
+
+        let mut fd = match fs::File::open(path) {
+            Ok(fd) => fd,
+            Err(_e) => return ptr::null_mut()
+        };
+
+        let mut contents = String::new();
+        match fd.read_to_string(&mut contents) {
+            Ok (_num) => (),
+            Err(_e) => return ptr::null_mut()
+        };
+
+        match Timeline::load(&contents) {
+            Ok(tl) => Box::into_raw(Box::new(tl)),
+            Err(_e) => ptr::null_mut()
+        }
     }
 
     #[no_mangle]
