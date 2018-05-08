@@ -313,10 +313,20 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_iter_start(tr: *mut Track) -> *mut CAPINodeIterator {
+    pub unsafe extern "C" fn demy_tr_iter_begin(tr: *mut Track) -> *mut CAPINodeIterator {
         let data = Box::new(CAPINodeIterator { 
             track: tr as *const Track, 
             index: 0,
+        });
+
+        Box::into_raw(data)
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_tr_iter_end(tr: *mut Track) -> *mut CAPINodeIterator {
+        let data = Box::new(CAPINodeIterator { 
+            track: tr as *const Track, 
+            index: (*tr).nodes.len(),
         });
 
         Box::into_raw(data)
@@ -333,11 +343,17 @@ pub mod ffi {
         
         (*iter).index += 1
     }
-
+    
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tr_iter_end(iter: *mut CAPINodeIterator) {
+    pub unsafe extern "C" fn demy_tr_iter_free(iter: *mut CAPINodeIterator) {
         if iter.is_null() { return }
         Box::from_raw(iter);
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn demy_tr_iter_are_eq(a: *mut CAPINodeIterator, b: *mut CAPINodeIterator) -> bool {
+        if a.is_null() || b.is_null() { return false; }
+        return (*a).index == (*b).index;
     }
 
     #[no_mangle]
