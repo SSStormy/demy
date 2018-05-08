@@ -290,9 +290,9 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn demy_tl_track_get(tl: *mut Timeline, name: *const c_char) -> *const Track {
+    pub unsafe extern "C" fn demy_tl_track_get(tl: *mut Timeline, name: *const c_char) -> *mut Track {
         let name = CStr::from_ptr(name).to_str().unwrap();
-        (*tl).get_track(name)
+        (*tl).get_track_mut(name)
     }
 
     #[no_mangle]
