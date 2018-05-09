@@ -66,18 +66,20 @@ impl Track {
         let mut prev_time = self.nodes[0].get_time();
         let mut insert_index = None;
 
-        for (i, node) in self.nodes.iter().enumerate().skip(1) {
-            let time = node.get_time();
-            if time == add_node.get_time(){ 
+        for (i, cur_node) in self.nodes.iter().enumerate().skip(1) {
+            let cur_time = cur_node.get_time();
+            let add_time = add_node.get_time();
+
+            if cur_time == add_time { 
                 return Some("A node already exists at this time point.");
             }
 
-            if node.get_time() > prev_time && time > node.get_time() {
+            if cur_time > add_time && add_time > prev_time {
                 insert_index = Some(i);
                 break;
             }
 
-            prev_time = time;
+            prev_time = cur_time;
         }
 
         let index = match insert_index { Some(index) => index, None => self.nodes.len() };
@@ -124,6 +126,7 @@ impl Track {
                     return None 
                 }
 
+                self.del_node_at(time);
                 self.add_node(node);
                 None
             }
@@ -615,6 +618,21 @@ mod tests {
         let node = track.get_node_at(10).unwrap();
         assert_eq!(node.get_time(), 10);
         assert_eq!(node.get_value(), 1_f64);
+    }
+
+    #[test]
+    fn node_vec_is_ordered() {
+        let mut tl = Timeline::new();
+        let track = tl.get_track_mut("camera.x");
+
+        track.add_node(&Node::new(5, 5_f64, InterpType::Linear));
+        track.add_node(&Node::new(2, 2_f64, InterpType::Linear));
+
+        let mut prev_node = track.nodes().next().unwrap();
+        for node in track.nodes().skip(1) {
+            assert!(prev_node.get_time() < node.get_time());
+            prev_node = node;
+        }
     }
 
     #[test]
