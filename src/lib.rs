@@ -414,22 +414,34 @@ pub mod ffi {
 
         let path = match CStr::from_ptr(path).to_str() {
             Ok(path) => path,
-            Err(_e) => return false,
+            Err(e) => { 
+                println!("{:#?}", e);
+                return false;
+            }
         };
 
-        let mut fd = match fs::File::open(path) {
+        let mut fd = match fs::File::create(path) {
             Ok(fd) => fd,
-            Err(_e) => return false,
+            Err(e) => {
+                println!("{:#?}", e);
+                return false;
+            }
         };
 
         let data = match (*tl).save() {
             Ok(data) => data,
-            Err(_err) => return false,
+            Err(e) => {
+                println!("{:#?}", e);
+                return false;
+            }
         };
 
         match fd.write_all(&data.into_bytes()) {
             Ok(_result) => true,
-            Err(_err) => false,
+            Err(e) => {
+                println!("{:#?}", e);
+                false
+            }
         }
     }
 
@@ -437,9 +449,13 @@ pub mod ffi {
     pub unsafe extern "C" fn demy_tl_load(path: *const c_char) -> *mut Timeline {
         if path.is_null() { return ptr::null_mut(); }
 
-        let path = match CStr::from_ptr(path).to_str() {
-            Ok(path) => path,
-            Err(_e) => return ptr::null_mut()
+        let path_cstr = CStr::from_ptr(path).to_str();
+        let path = match  path_cstr {
+            Ok(p) => p,
+            Err(e) =>  {
+                println!("{:#?}", e);
+                return ptr::null_mut();
+            }
         };
 
         let mut fd = match fs::File::open(path) {
@@ -637,48 +653,55 @@ mod tests {
 
     #[test]
     fn serialize_deserialize() {
-        let mut tl = Timeline::new();
-        let track1 = "camera.x";
-        let t1_node1 = Node::new(10, 1_f64, InterpType::Linear);
-        let t1_node2 = Node::new(20, 2_f64, InterpType::Linear);
 
-        let track2 = "camera.y";
-        let t2_node1 = Node::new(10, 4_f64, InterpType::Linear);
-        let t2_node2 = Node::new(20, 8_f64, InterpType::Linear);
+        let mut serialized: String;
 
         {
-            let track = tl.get_track_mut(track1);
-            track.add_node(&t1_node1);
-            track.add_node(&t1_node2);
+            let mut tl = Timeline::new();
+            let track1 = "camera.x";
+            let t1_node1 = Node::new(10, 1_f64, InterpType::Linear);
+            let t1_node2 = Node::new(20, 2_f64, InterpType::Linear);
+
+            let track2 = "camera.y";
+            let t2_node1 = Node::new(10, 4_f64, InterpType::Linear);
+            let t2_node2 = Node::new(20, 8_f64, InterpType::Linear);
+
+            {
+                let track = tl.get_track_mut(track1);
+                track.add_node(&t1_node1);
+                track.add_node(&t1_node2);
+            }
+
+            {
+                let track = tl.get_track_mut(track2);
+                track.add_node(&t2_node1);
+                track.add_node(&t2_node2);
+            }
+
+            serialized = tl.save().unwrap();
         }
 
         {
-            let track = tl.get_track_mut(track2);
-            track.add_node(&t2_node1);
-            track.add_node(&t2_node2);
-        }
+            let mut tl = Timeline::load(&serialized).unwrap();
 
-        let serialized = tl.save().unwrap();
-        let mut tl = Timeline::load(&serialized).unwrap();
+            assert_eq!(tl.tracks().count(), 2);
 
-        assert_eq!(tl.tracks().count(), 2);
+            {
+                let track = tl.get_track(track1);
+                assert_eq!(track.nodes().count(), 3);
+                let val = track.get_value_at(5);
+                assert!(0.001 > (0.5_f64 - val).abs(), "val: {}", val);
+                let val = track.get_value_at(15);
+                assert!(0.001 > (1.5_f64 - val).abs(), "val: {}", val);
+            }
 
-        {
-            let track = tl.get_track(track1);
-            assert_eq!(track.nodes().count(), 3);
-            let val = track.get_value_at(5);
-            assert!(0.001 > (0.5_f64 - val).abs(), "val: {}", val);
-            let val = track.get_value_at(15);
-            assert!(0.001 > (1.5_f64 - val).abs(), "val: {}", val);
-        }
-
-        {
-            let track = tl.get_track(track2);
-            assert_eq!(track.nodes().count(), 3);
-            let val = track.get_value_at(5);
-            assert!(0.001 > (2_f64 - val).abs(), "val: {}", val);
-            let val = track.get_value_at(15);
-            assert!(0.001 > (6_f64 - val).abs(), "val: {}", val);
-        }
+            {
+                let track = tl.get_track(track2);
+                assert_eq!(track.nodes().count(), 3);
+                let val = track.get_value_at(5);
+                assert!(0.001 > (2_f64 - val).abs(), "val: {}", val);
+                let val = track.get_value_at(15);
+                assert!(0.001 > (6_f64 - val).abs(), "val: {}", val);
+            }
     }
 }
