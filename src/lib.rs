@@ -407,6 +407,7 @@ pub mod ffi {
     use std::fs;
     use std::io::Read;
     use std::io::Write;
+    use std::error::Error;
 
     #[no_mangle]
     pub unsafe extern "C" fn demy_tl_save(tl: *const Timeline, path: *const c_char) -> bool {
@@ -415,7 +416,7 @@ pub mod ffi {
         let path = match CStr::from_ptr(path).to_str() {
             Ok(path) => path,
             Err(e) => { 
-                println!("{:#?}", e);
+                println!("{}", e.description());
                 return false;
             }
         };
@@ -423,7 +424,7 @@ pub mod ffi {
         let mut fd = match fs::File::create(path) {
             Ok(fd) => fd,
             Err(e) => {
-                println!("{:#?}", e);
+                println!("{}", e.description());
                 return false;
             }
         };
@@ -431,7 +432,7 @@ pub mod ffi {
         let data = match (*tl).save() {
             Ok(data) => data,
             Err(e) => {
-                println!("{:#?}", e);
+                println!("{}", e);
                 return false;
             }
         };
@@ -439,7 +440,7 @@ pub mod ffi {
         match fd.write_all(&data.into_bytes()) {
             Ok(_result) => true,
             Err(e) => {
-                println!("{:#?}", e);
+                println!("{}", e.description());
                 false
             }
         }
@@ -453,25 +454,34 @@ pub mod ffi {
         let path = match  path_cstr {
             Ok(p) => p,
             Err(e) =>  {
-                println!("{:#?}", e);
+                println!("{}", e.description());
                 return ptr::null_mut();
             }
         };
 
         let mut fd = match fs::File::open(path) {
             Ok(fd) => fd,
-            Err(_e) => return ptr::null_mut()
+            Err(e) => { 
+                println!("{}", e.description());
+                return ptr::null_mut()
+            }
         };
 
         let mut contents = String::new();
         match fd.read_to_string(&mut contents) {
             Ok (_num) => (),
-            Err(_e) => return ptr::null_mut()
+            Err(e) => { 
+                println!("{}", e.description());
+                return ptr::null_mut()
+            }
         };
 
         match Timeline::load(&contents) {
             Ok(tl) => Box::into_raw(Box::new(tl)),
-            Err(_e) => ptr::null_mut()
+            Err(e) => { 
+                println!("{}", e);
+                return ptr::null_mut()
+            }
         }
     }
 
