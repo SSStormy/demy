@@ -654,15 +654,15 @@ mod tests {
     #[test]
     fn serialize_deserialize() {
 
-        let mut serialized: String;
+        let serialized: String;
+        let track1 = "camera.x";
+        let track2 = "camera.y";
 
         {
             let mut tl = Timeline::new();
-            let track1 = "camera.x";
             let t1_node1 = Node::new(10, 1_f64, InterpType::Linear);
             let t1_node2 = Node::new(20, 2_f64, InterpType::Linear);
 
-            let track2 = "camera.y";
             let t2_node1 = Node::new(10, 4_f64, InterpType::Linear);
             let t2_node2 = Node::new(20, 8_f64, InterpType::Linear);
 
@@ -703,5 +703,6 @@ mod tests {
                 let val = track.get_value_at(15);
                 assert!(0.001 > (6_f64 - val).abs(), "val: {}", val);
             }
+        }
     }
 }
